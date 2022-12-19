@@ -1,101 +1,114 @@
 import os
-import shutil
-import tarfile
+from os import listdir
+import os
 
+def readSummaryFile(tempdir, newName):
+    os.chdir(os.path.join(tempdir + '/' + newName))
 
-def folderDeletion(path):
+    openRead = open('SUMMARY', 'r')
+    wantedValues = ['BOARD', 'FIRMUX', 'BUILD', 'LOAD', 'RAM', 'print', 'UPTIME']
+    summaryFileContent = []
 
-    list_dir = os.listdir(path)
+    for line in openRead:
+        for value in wantedValues:
+            if value in line:
+                summaryFileContent.append(line)     
+    return summaryFileContent
 
-    for filename in list_dir:
-        file_path = os.path.join(path, filename)
+def summaryDictionary(tempdir, newName):
+    summaryFileContent = readSummaryFile(tempdir, newName)
+    summaryDict = {}
+    
+    size = len(summaryFileContent)
+    for i in range(size):
+        partitionedString = summaryFileContent[i].partition('=')
+        summaryDict[partitionedString[0]] = partitionedString[2]
+        if partitionedString[0] == 'LOAD':
+            summaryDict['CPU LOAD'] = summaryDict.pop('LOAD')
+    return summaryDict
 
-        if os.path.isfile(file_path) or os.path.islink(file_path):
-            os.unlink(file_path)
+def getContent(tempdir, newName):
+    os.chdir(os.path.join(tempdir + '/' + newName))
+    with open("SUMMARY", "r") as f:
+        content = f.read()
+    return content
 
-        elif os.path.isdir(file_path):
-            shutil.rmtree(file_path)
+def inspectSummary(tempdir, newName):
+    summaryDict = summaryDictionary(tempdir, newName)
+    
+    for j in summaryDict:
+        if j == 'RAM':
+            ramKB =  summaryDict[j].partition(' ')
+        if j == 'CPU LOAD':
+            cpuLoad = summaryDict[j].split(' ')
+    
+    return ramKB, cpuLoad
 
-    os.rmdir(path)
+def inspectHangedProcesses(tempdir, newName):
+    os.chdir(os.path.join(tempdir + '/' + newName + '/Raw_data_dumps'))
+    if os.path.isfile('ps'):
+        openRead = open('ps', 'r')
+        statContent = [] 
+        unwantedStates = ['D', 'X', 'T', 'Z', 't']
+        commonStatCounter = 0
 
+        for possition, line in enumerate(openRead):
+            if possition == 0:
+                stat = line.split('STAT')[0]
+                command = line.split('COMMAND')[0]
+                statContent.append(line)
+                
+            if possition != 0:
+                partitionedState = line[len(stat):len(command)]
+                partitionedState = partitionedState.replace(" ", "")
+                for i in unwantedStates:
+                    if i in partitionedState:
+                        
+                        commonStatCounter += 1
+                        statContent.append(line)
 
-def extract(tempdir, troubleshootFiles, index, fileStatus):
+        os.chdir(os.path.join(tempdir + '/' + newName))
 
-    folderKeyValues = ['SUMMARY', 'Raw_data_dumps', 'Raw_data_files']
-    counter = 0
-    movingForward = False
-    newName = ''
+        commonStatCounter += 1
 
-    newName = troubleshootFiles[index].replace('.tar.gz','')
+        if commonStatCounter == 0:
+            statContentText='No hanged processes detected'
+            statContent.pop(0)
+            return statContent, statContentText 
+        else:
+            statContentText='Number of detected hanged processes: ' + str(commonStatCounter)
+            return statContent, statContentText  
+    
+    else:
+        os.chdir(os.path.join(tempdir + '/' + newName))
+        statContentText='ps file is not found'
+        commonStatCounter = 0
+        statContent = []
+        return statContent, statContentText 
 
-    existance = os.path.isdir(tempdir + '/' + newName)
+def pstore(tempdir, newName):
+    
+    os.chdir(os.path.join(tempdir + '/' + newName))
+    searchValues = ['Oops:', 'oom-killer']
+    listOfResults = []
+    lineNumber = 0
+      
+    if len(os.listdir(tempdir + '/' + newName + '/Raw_data_dumps/pstore') ) == 0: 
+        pstoreText = "Pstore folder is empty"
 
-    if existance is False:
-        os.chdir(os.path.join(tempdir))
+    else:       
+        for filename in listdir(tempdir + '/' + newName + '/Raw_data_dumps/pstore'): 
+            with open(tempdir + '/' + newName + '/Raw_data_dumps/pstore' + '/' + filename, 'r') as read_obj: 
+                lineNumber = 0
+                for line in readObj:
+                    lineNumber += 1 
+                    for i in searchValues: 
+                        if i in line:
+                            listOfResults.append((lineNumber, line.rstrip()))
+                            
+                if listOfResults:
+                    pstoreText = 'Anomality detected in Pstore file: ' + filename 
+                else:
+                    pstoreText="No craches or OOMs detected"
 
-        try:
-            file = tarfile.open(troubleshootFiles[index])   
-            file.extractall(os.path.join(tempdir))
-
-            for i in folderKeyValues:
-                arr = os.listdir(os.path.join(tempdir + '/' + 'diagnose'))
-                if i in arr:
-                    counter += 1
-
-            if counter == 3:
-                os.chdir(os.path.join(tempdir))
-
-                os.rename('diagnose', newName)
-                file.close()
-
-                os.chdir(tempdir)
-
-                if fileStatus == 's':
-                    print('\nFile *** ' + troubleshootFiles[index] + ' *** uploaded successfully\n')
-                movingForward = True
-                return newName, movingForward
-
-            elif counter != 3:
-                os.rename('diagnose', newName)
-
-                if len(troubleshootFiles) == 1:
-                    print('\nSelected file (' + newName + ".tar.gz" + ') is not appropriate for troubleshoot diagnostics\n')
-                    folderDeletion(newName)
-                    tmpnewName = ''
-
-                os.remove(newName + ".tar.gz")
-                newName = tmpnewName
-
-                return newName, movingForward
-
-        except:
-            if len(troubleshootFiles) == 1:
-                print('\nSelected file (' + newName + ".tar.gz" + ') can not be opened\n')
-                tmpnewName = ''
-
-            os.remove(newName + ".tar.gz")
-            newName = tmpnewName
-
-            return newName, movingForward
-
-    else: 
-
-        arr = os.listdir(os.path.join(tempdir + '/' + newName))
-        for i in folderKeyValues:
-            if i in arr:
-                counter += 1
-
-        if counter == 3:
-            movingForward = True
-            return newName, movingForward
-
-        elif counter != 3:
-
-            if len(troubleshootFiles) == 1:
-                print('\nSelected file (' + newName + ".tar.gz" + ') is not appropriate for troubleshoot diagnostics\n')
-
-            os.remove(newName + ".tar.gz")
-            folderDeletion(newName)
-            newName = ''
-
-            return newName, movingForward
+    return pstoreText, listOfResults
