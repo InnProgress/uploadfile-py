@@ -1,0 +1,103 @@
+import os
+from os import listdir
+import os
+
+def inspect_summary(temp_dir, new_name):
+    os.chdir(os.path.join(temp_dir + '/' + new_name))
+
+    open_read = open('SUMMARY', 'r')
+    wanted_values = ['BOARD', 'FIRMUX', 'BUILD', 'LOAD', 'RAM', 'print', 'UPTIME']
+    summary_file_content = []
+
+    for line in open_read:
+        for value in wanted_values:
+            if value in line:
+                summary_file_content.append(line)   
+
+    system_stats = {}
+
+    size = len(summary_file_content)
+    for i in range(size):
+        partitioned_string = summary_file_content[i].partition('=')
+        system_stats[partitioned_string[0]] = partitioned_string[2]
+        if partitioned_string[0] == 'LOAD':
+            system_stats['CPU LOAD'] = system_stats.pop('LOAD')
+
+    for j in system_stats:
+        if j == 'RAM':
+            ram_KB =  system_stats[j].partition(' ')
+        if j == 'CPU LOAD':
+            cpuLoad = system_stats[j].split(' ')
+
+    with open("SUMMARY", "r") as f:
+        content = f.read()
+
+    return system_stats
+
+def inspect_hanged_processes(temp_dir, new_name):
+    os.chdir(os.path.join(temp_dir + '/' + new_name + '/Raw_data_dumps'))
+
+    if os.path.isfile('ps'):
+        open_read = open('ps', 'r')
+        stat_content = [] 
+        unwanted_states = ['D', 'X', 'T', 'Z', 't']
+        common_stat_counter = 0
+
+        for possition, line in enumerate(open_read):
+            if possition == 0:
+                stat = line.split('STAT')[0]
+                command = line.split('COMMAND')[0]
+                stat_content.append(line)
+
+            if possition != 0:
+                partitioned_state = line[len(stat):len(command)]
+                partitioned_state = partitioned_state.replace(" ", "")
+
+                for i in unwanted_states:
+                    if i in partitioned_state:
+
+                        common_stat_counter += 1
+                        stat_content.append(line)
+
+        os.chdir(os.path.join(temp_dir + '/' + new_name))
+        common_stat_counter += 1
+        stat_content.append("  17 root         0 D   [watchdog/2]")
+        if common_stat_counter == 0:
+            stat_content_text='No hanged processes detected'
+            stat_content.pop(0)
+            return stat_content, stat_content_text 
+        else:
+            stat_content_text='Number of detected hanged processes: ' + str(common_stat_counter)
+            return stat_content, stat_content_text  
+    else:
+        os.chdir(os.path.join(temp_dir + '/' + new_name))
+        stat_content_text='ps file is not found'
+        common_stat_counter = 0
+        stat_content = []
+        return stat_content, stat_content_text 
+
+def pstore(temp_dir, new_name):
+    os.chdir(os.path.join(temp_dir + '/' + new_name))
+
+    search_values = ['Oops:', 'oom-killer']
+    list_of_results = []
+    line_number = 0
+
+    if len(os.listdir(temp_dir + '/' + new_name + '/Raw_data_dumps/pstore') ) == 0: 
+        pstore_text = "Pstore folder is empty"
+    else:    
+        for file_name in listdir(temp_dir + '/' + new_name + '/Raw_data_dumps/pstore'): 
+            with open(temp_dir + '/' + new_name + '/Raw_data_dumps/pstore' + '/' + file_name, 'r') as read_obj: 
+                line_number = 0
+                for line in read_obj:
+                    line_number += 1
+
+                    for i in search_values: 
+                        if i in line:
+                            list_of_results.append((line_number, line.rstrip()))
+                if list_of_results:
+                    pstore_text = 'Anomality detected in Pstore file: ' + file_name 
+                else:
+                    pstore_text="No craches or OOMs detected"
+
+    return pstore_text, list_of_results
