@@ -9,20 +9,21 @@ import extractFile
 import inspectStats
 from tempfile import TemporaryDirectory
 
-fileList = []
-extractList = []
+file_list = []
+extract_list = []
 
 passed_arguments_number = len(sys.argv)
 passed_argument_for_file = []
 
 ALLOWED_EXTENSIONS = '.tar.gz'
+FILE_STATUS_SYMBOL = 's'
 UPLOAD_FOLDER = r"D:\Users\Arnas\Desktop\script\upload_files"
 path_of_file = r"D:\Users\Arnas\Desktop\script"
 
 
-def write_file(passed_argument, newName, dict, statContent, statContentText, pstore_text, list_of_results_pstore):
-    filename = newName+'-log.txt'
-    filepath = os.path.join(UPLOAD_FOLDER, newName, filename)
+def write_file(passed_argument, new_name, dict, stat_content, stat_content_text, pstore_text, list_of_results_pstore):
+    filename = new_name+'-log.txt'
+    filepath = os.path.join(UPLOAD_FOLDER, new_name, filename)
 
     if os.path.isfile(filename):
         os.remove(filepath)
@@ -41,10 +42,10 @@ def write_file(passed_argument, newName, dict, statContent, statContentText, pst
         f.write(f"* {x} - {y}")
 
     f.write(f"\nHanged processes: ")
-    f.write(f"\n{statContentText}")
-    if statContent:
+    f.write(f"\n{stat_content_text}")
+    if stat_content:
         f.write("\n------------------------------------\n")
-        for x in statContent:
+        for x in stat_content:
             f.write(f"{x}")
 
     f.write("\n\nPstore files:")
@@ -68,10 +69,10 @@ def write_file(passed_argument, newName, dict, statContent, statContentText, pst
         print(f"* {x} - {y}")
 
     print(f"\nHanged processes: ")
-    print(f"{statContentText}")
-    if statContent:
+    print(f"{stat_content_text}")
+    if stat_content:
         print("------------------------------------")
-        for x in statContent:
+        for x in stat_content:
             print(f"{x}")
 
     print("\n\nPstore files:")
@@ -83,52 +84,52 @@ def write_file(passed_argument, newName, dict, statContent, statContentText, pst
     print('\n')
 
 
+def form_argument(var):
+    passed_argument = ''
+    for i in range(1, len(var)):
+        passed_argument += var[i]
+        passed_argument += ' '
+    return passed_argument
+
+
+def check_if_file_exists():
+    passed_argument = form_argument(sys.argv)
+    if os.path.isfile(passed_argument):
+        file = passed_argument
+        if file_list:
+            file_list.clear()
+        if extract_list:
+            extract_list.clear()
+        return file
+    else:
+        print(f"Passed file does not exist -> {passed_argument}")
+        quit()
+
+
 def upload_file():
-
     if passed_arguments_number > 1:
-
-        passed_argument = ''
-    
-        for i in range(1, passed_arguments_number):
-            passed_argument += sys.argv[i]
-            passed_argument_for_file.append(passed_argument + '.')
-            passed_argument_for_file.append(passed_argument + ' ')
-            passed_argument += ' '
-
-        if os.path.isfile(passed_argument):
-            file = passed_argument
-
-        if fileList:
-            fileList.clear()
-
-        if extractList:
-            extractList.clear()
-
+        
+        file = check_if_file_exists()
 
         if ALLOWED_EXTENSIONS in file:
             filename = secure_filename(file)
             target = os.path.join(path_of_file, filename)
             shutil.copy(target, UPLOAD_FOLDER)
 
-            if filename not in fileList:
-                fileList.append(filename)
+            if filename not in file_list:
+                file_list.append(filename)
             
-            fileStatus = 's'
-            newName, movingForward = extractFile.extract(UPLOAD_FOLDER, fileList, fileList.index(filename), fileStatus)
-            extractList.append(newName)
+            new_name, moving_forward = extractFile.check_troubleshoot_file_existence(UPLOAD_FOLDER, file_list, file_list.index(filename), FILE_STATUS_SYMBOL)
+            extract_list.append(new_name)
 
-            if movingForward:
-
-                dict, ramKB, cpuLoad, content = inspectStats.inspectSummary(UPLOAD_FOLDER, newName)
-                statContent, statContentText = inspectStats.inspectHangedProcesses(UPLOAD_FOLDER, newName)
-                pstore_text, list_of_results_pstore = inspectStats.pstore(UPLOAD_FOLDER, newName)
-
-                write_file(file, newName, dict, statContent, statContentText, pstore_text, list_of_results_pstore)
+            if moving_forward:
+                summary_dict = inspectStats.summary_dictionary(UPLOAD_FOLDER, new_name)
+                stat_content, stat_content_text = inspectStats.inspect_hanged_processes(UPLOAD_FOLDER, new_name)
+                pstore_text, list_of_results_pstore = inspectStats.pstore(UPLOAD_FOLDER, new_name)
+                write_file(file, new_name, summary_dict, stat_content, stat_content_text, pstore_text, list_of_results_pstore)
                 
-              
         else:
-            print('Allowed file format is .tar.gz')
-
+            print(f"Allowed file format is {ALLOWED_EXTENSIONS}")
     else:
         print("\nNo arguments were passed.\n")
 
